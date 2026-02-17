@@ -132,8 +132,7 @@ st.set_page_config(page_title="Opening Simulator", layout="wide")
 
 if 'base_attacks' not in st.session_state:
     st.session_state.base_attacks = [
-        [71, 20.80], [91, 17.87], 
-        [172, 0.1], [181, 14.84], [191, 30.27]
+        [71, 20.80], [91, 17.87]
     ]
 if 'optimized_results' not in st.session_state:
     st.session_state.optimized_results = None
@@ -170,7 +169,7 @@ with st.sidebar:
 
 st.title("Water's Opening Simulator")
 st.subheader("Chain Optimizer")
-ticks_input = st.text_input("Sequence of attack ticks to optimize (Comma separated)", "462, 471, 481, 491")
+ticks_input = st.text_input("Sequence of attack ticks to optimize (Comma separated)", "172, 181, 191")
 test_ticks = [int(t.strip()) for t in ticks_input.split(",") if t.strip().isdigit()]
 
 def get_active_attacks():

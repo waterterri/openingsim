@@ -145,26 +145,47 @@ if 'optimized_results' not in st.session_state:
 
 with st.sidebar:
     st.header("Controls")
+    
+    # Run simulation button (outside the form so it triggers immediately)
     run_manual = st.button("🚀 Run Base Simulation", use_container_width=True)
+    
+    # Clear All button (outside the form)
+    if st.button("🗑️ Clear All Attacks", use_container_width=True):
+        st.session_state.base_attacks = []
+        st.session_state.optimized_results = None
+        st.rerun()
+    
     st.divider()
-    st.subheader("Base Opening Attacks")
     
-    # Filter out empty/None rows from the display
-    clean_df = pd.DataFrame(
-        [r for r in st.session_state.base_attacks if r[0] is not None], 
-        columns=["Tick", "Percent"]
-    )
-    
-    # key="editor" ensures focus isn't lost during reruns
-    edited_df = st.data_editor(
-        clean_df,
-        num_rows="dynamic",
-        key="editor",
-        use_container_width=True
-    )
-    
-    # Update state only if valid data is present
-    st.session_state.base_attacks = edited_df.values.tolist()
+    # THE FORM: This stops the glitching
+    with st.form("attack_editor_form"):
+        st.subheader("Base Opening Attacks")
+        
+        # Prepare the data
+        clean_df = pd.DataFrame(
+            [r for r in st.session_state.base_attacks if r is not None and not all(x is None for x in r)], 
+            columns=["Tick", "Percent"]
+        )
+
+        # The editor inside the form will NOT trigger a rerun until the button is clicked
+        edited_df = st.data_editor(
+            clean_df,
+            num_rows="dynamic",
+            key="editor_inside_form",
+            use_container_width=True
+        )
+        
+        # The form submit button
+        submit_btn = st.form_submit_button("💾 Apply Changes", use_container_width=True)
+        
+        if submit_btn:
+            # Sync edits to state only when button is clicked
+            raw_edits = edited_df.values.tolist()
+            st.session_state.base_attacks = [r for r in raw_edits if not all(x is None for x in r)]
+            st.success("Changes saved!")
+            st.rerun()
+
+    st.caption("Tip: Select row checkbox + 'Delete' key to remove a row.")
 
 st.title("🎮 Opening Simulation Optimizer")
 st.subheader("Chain Optimizer")

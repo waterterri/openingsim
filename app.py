@@ -139,6 +139,34 @@ def FindMinAttack(knownOpening, currentTick, nextTick):
             
     return bestStep
 
+
+def OptimizeChain(baseOpening, unknownTicks):
+   
+    currentOpening = [list(a) for a in baseOpening]
+    results = []
+
+    print(f"--- STARTING CHAIN OPTIMIZATION ---")
+    
+    for i, thisTick in enumerate(unknownTicks):
+        
+        isLast = (i == len(unknownTicks) - 1)
+        nextEventTick = (unknownTicks[i+1] if not isLast else int(math.ceil(max(unknownTicks) / 100)) * 100) - 1
+        
+        step = FindMinAttack(currentOpening, thisTick, nextEventTick)
+        
+        if step is not None:
+            percent = (step / 1024) * 100
+            currentOpening.append([thisTick, percent])
+            currentOpening.sort()
+            results.append({"tick": thisTick, "step": step, "percent": percent})
+            print(f"Tick {thisTick:3}: Minimized to slider {step:4} / 1024 ({percent:.2f}%)")
+        else:
+            print(f"Tick {thisTick:3}: FAILED. Cannot sustain attack until tick {nextEventTick}.")
+            return None
+
+    return sorted(currentOpening, key=lambda x: x)
+
+
 st.set_page_config(page_title="Game Simulation Optimizer", layout="wide")
 
 st.title("🎮 Opening Simulation Optimizer")

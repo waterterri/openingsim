@@ -1,6 +1,9 @@
 import streamlit as st
 import math
 import pandas as pd
+import io
+from contextlib import redirect_stdout
+
 
 class OpeningSim:
     
@@ -167,58 +170,93 @@ def OptimizeChain(baseOpening, unknownTicks):
     return sorted(currentOpening, key=lambda x: x)
 
 
-st.set_page_config(page_title="Game Simulation Optimizer", layout="wide")
+# --- [PASTE YOUR OpeningSim, FindMinAttack, AND OptimizeChain CLASSES HERE] ---
 
+st.set_page_config(page_title="Opening Simulator", layout="wide")
+
+# Initialize session state for the base attacks list
+if 'base_attacks' not in st.session_state:
+    st.session_state.base_attacks = [
+        [64, 15.33], [81, 15.53], [91, 35.55], 
+        [164, 0.10], [172, 22.17], [181, 31.35], [191, 76.27],
+        [270, 0.10], [281, 43.85], [291, 85.64], 
+        [371, 0.10], [381, 46.29], [391, 69.73]
+    ]
+
+# --- SIDEBAR ---
+with st.sidebar:
+    st.header("Controls")
+    
+    # 1. Manual Test Button at the top
+    if st.button("🚀 Run Base Simulation", use_container_width=True):
+        st.session_state.run_type = "manual"
+    
+    st.divider()
+    
+    st.subheader("Base Opening Attacks")
+    # Data editor updates the session state
+    edited_df = st.data_editor(
+        pd.DataFrame(st.session_state.base_attacks, columns=["Tick", "Percent"]),
+        num_rows="dynamic",
+        key="data_editor"
+    )
+    # Sync edited data back to state
+    st.session_state.base_attacks = edited_df.values.tolist()
+
+# --- MAIN AREA ---
 st.title("🎮 Opening Simulation Optimizer")
 
-# Sidebar: Base Configuration
-st.sidebar.header("Base Attacks")
-base_data = pd.DataFrame([
-    [64, 15.33], [81, 15.53], [91, 35.55], 
-    [164, 0.10], [172, 22.17], [181, 31.35], [191, 76.27]
-], columns=["Tick", "Percent"])
+# 2. Chain Optimizer UI
+st.subheader("Chain Optimizer")
+ticks_input = st.text_input("Ticks to optimize (comma separated)", "462, 471, 481, 491")
+test_ticks = [int(t.strip()) for t in ticks_input.split(",") if t.strip().isdigit()]
 
-edited_base = st.sidebar.data_editor(base_data, num_rows="dynamic")
+col_opt, col_add = st.columns([1, 2])
 
-# Main UI: Chain Optimization
-col1, col2 = st.columns(2)
+with col_opt:
+    opt_clicked = st.button("🔍 Run Optimizer", use_container_width=True)
 
-with col1:
-    st.subheader("Chain Optimizer")
-    ticks_input = st.text_input("Ticks to optimize (comma separated)", "462, 471, 481, 491")
-    
-    if st.button("Run Optimizer"):
-        test_ticks = [int(t.strip()) for t in ticks_input.split(",")]
-        base_list = edited_base.values.tolist()
+# Logic for Optimization
+if opt_clicked:
+    with st.spinner("Calculating optimal chain..."):
+        # We need a modified OptimizeChain that returns the failure tick if it fails
+        results = OptimizeChain(st.session_state.base_attacks, test_ticks)
         
-        with st.spinner("Optimizing..."):
-            optimized = OptimizeChain(base_list, test_ticks)
-            
-        if optimized:
-            st.success("Optimization Complete!")
-            st.dataframe(pd.DataFrame(optimized, columns=["Tick", "Percent"]))
-            
-            # Verification Run
-            st.subheader("Simulation Log")
-            sim = OpeningSim(optimized, verbosity=1)
-            # Capture stdout to show in web app
-            import io
-            from contextlib import redirect_stdout
-            f = io.StringIO()
-            with redirect_stdout(f):
-                sim.Run(505)
-            st.code(f.getvalue())
+        if results:
+            st.session_state.optimized_results = results
+            st.success("Optimization successful!")
+        else:
+            # Finding which tick failed (approximate based on current logic)
+            st.error(f"❌ Optimization FAILED. Cannot sustain the chain of attacks.")
+            st.session_state.optimized_results = None
 
-with col2:
-    st.subheader("Manual Test")
-    single_tick = st.number_input("Test Tick", value=462)
-    single_percent = st.slider("Test Percentage", 0.0, 100.0, 15.0)
+# 3. "Add to Base" Button (only shows if optimization succeeded)
+if st.session_state.get('optimized_results'):
+    new_attacks = [a for a in st.session_state.optimized_results if a not in st.session_state.base_attacks]
+    if new_attacks:
+        with col_add:
+            if st.button(f"➕ Add {len(new_attacks)} Attacks to Base Opening", type="primary"):
+                st.session_state.base_attacks = sorted(st.session_state.optimized_results)
+                st.rerun()
+
+# --- OUTPUT CONSOLE ---
+st.divider()
+output_area = st.empty()
+
+# Handle Simulation Execution
+if st.session_state.get("run_type") == "manual" or opt_clicked:
+    attacks_to_run = st.session_state.optimized_results if opt_clicked and st.session_state.get('optimized_results') else st.session_state.base_attacks
     
-    if st.button("Test Single Run"):
-        manual_attacks = edited_base.values.tolist() + [[single_tick, single_percent]]
-        sim = OpeningSim(manual_attacks, verbosity=2)
-        f = io.StringIO()
-        with redirect_stdout(f):
-            land, success = sim.Run(505)
-        st.write(f"**Success:** {success} | **Final Land:** {land}")
+    sim = OpeningSim(attacks_to_run, verbosity=2)
+    f = io.StringIO()
+    with redirect_stdout(f):
+        land, success = sim.Run(505)
+    
+    with output_area.container():
+        st.subheader("Simulation Log")
+        status_color = "green" if success else "red"
+        st.markdown(f"**Final Land:** `{land}` | **Success:** :{status_color}[{success}]")
         st.code(f.getvalue())
+    
+    # Reset run type
+    st.session_state.run_type = None

@@ -132,8 +132,8 @@ st.set_page_config(page_title="Opening Simulator", layout="wide")
 
 if 'base_attacks' not in st.session_state:
     st.session_state.base_attacks = [
-        [64, 15.33], [81, 15.53], [91, 35.55], 
-        [164, 0.10], [172, 22.17], [181, 31.35], [191, 76.27]
+        [71, 20.80], [91, 17.87], 
+        [172, 0.1], [181, 14.84], [191, 30.27]
     ]
 if 'optimized_results' not in st.session_state:
     st.session_state.optimized_results = None

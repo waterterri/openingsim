@@ -137,21 +137,34 @@ if 'base_attacks' not in st.session_state:
         [270, 0.10], [281, 43.85], [291, 85.64], 
         [371, 0.10], [381, 46.29], [391, 69.73]
     ]
-if 'optimized_results' not in st.session_state:
-    st.session_state.optimized_results = None
 
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("Controls")
     run_manual = st.button("🚀 Run Base Simulation", use_container_width=True)
+    
     st.divider()
     st.subheader("Base Opening Attacks")
+
+    # PRE-CLEAN: Remove any None/Empty rows before showing the table
+    clean_df = pd.DataFrame(
+        [r for r in st.session_state.base_attacks if r[0] is not None and r[1] is not None], 
+        columns=["Tick", "Percent"]
+    )
+
+    # Use 'key' to let Streamlit manage the state internally (much smoother)
     edited_df = st.data_editor(
-        pd.DataFrame(st.session_state.base_attacks, columns=["Tick", "Percent"]),
+        clean_df,
         num_rows="dynamic",
-        key="base_editor",
+        key="editor_widget", 
         use_container_width=True
     )
-    st.session_state.base_attacks = edited_df.values.tolist()
+
+    # Sync changes back to session state ONLY if they changed
+    # This prevents the "infinite loop" glitch
+    new_data = edited_df.values.tolist()
+    if new_data != st.session_state.base_attacks:
+        st.session_state.base_attacks = new_data
 
 st.title("🎮 Opening Simulation Optimizer")
 st.subheader("Chain Optimizer")

@@ -187,9 +187,9 @@ with st.sidebar:
 
     st.caption("Tip: Select row checkbox + 'Delete' key to remove a row.")
 
-st.title("🎮 Opening Simulation Optimizer")
+st.title("Water's Opening Simulator")
 st.subheader("Chain Optimizer")
-ticks_input = st.text_input("Ticks to optimize (comma separated)", "462, 471, 481, 491")
+ticks_input = st.text_input("Sequence of attack ticks to optimize (Comma separated)", "462, 471, 481, 491")
 test_ticks = [int(t.strip()) for t in ticks_input.split(",") if t.strip().isdigit()]
 
 col_opt, col_add = st.columns(2)
@@ -202,14 +202,14 @@ if opt_clicked:
         results, fail_tick = OptimizeChain(st.session_state.base_attacks, test_ticks)
         if results:
             st.session_state.optimized_results = results
-            st.success("Optimization successful!")
+            st.success("Attack Sequence successful!")
         else:
-            st.error(f"❌ Optimization FAILED at tick {fail_tick}.")
+            st.error(f"❌ FAILED to sustain the attack at tick {fail_tick}.")
             st.session_state.optimized_results = None
 
 if st.session_state.get('optimized_results'): # Use .get() for safety
     with col_add:
-        if st.button("➕ Add to Base Opening", type="primary", use_container_width=True):
+        if st.button("➕ Add Calculated Attacks to Base Opening", type="primary", use_container_width=True):
             st.session_state.base_attacks = sorted(st.session_state.optimized_results, key=lambda x: x[0])
             st.session_state.optimized_results = None
             st.rerun()

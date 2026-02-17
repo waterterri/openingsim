@@ -4,7 +4,7 @@ import pandas as pd
 import io
 from contextlib import redirect_stdout
 
-# --- CORE LOGIC (Ensure these match your classes exactly) ---
+# --- CORE LOGIC ---
 
 class OpeningSim:
     def __init__(self, openingAttacks, verbosity=0):
@@ -55,7 +55,7 @@ class OpeningSim:
         if self.verbosity >= 1: self.DispStats()
         for self.tick in range(1, maxTicks + 1):
             if self.troops < 0: 
-                return self.land, self.troops, False # Corrected return values
+                return self.land, self.troops, False 
 
             if self.nextAttack and self.tick == self.nextAttack[0]:
                 if self.verbosity >= 1: print(f"ATTACK  {self.nextAttack[1]}")
@@ -115,7 +115,6 @@ def FindMinAttack(knownOpening, currentTick, nextTick):
 
 def OptimizeChain(baseOpening, unknownTicks):
     currentOpening = [list(a) for a in baseOpening if a[0] is not None]
-    results = []
     for i, thisTick in enumerate(unknownTicks):
         isLast = (i == len(unknownTicks) - 1)
         nextEventTick = (unknownTicks[i+1] if not isLast else int(math.ceil(max(unknownTicks) / 100)) * 100) - 1
@@ -124,7 +123,6 @@ def OptimizeChain(baseOpening, unknownTicks):
             percent = (step / 1024) * 100
             currentOpening.append([thisTick, percent])
             currentOpening.sort()
-            results.append([thisTick, percent])
         else:
             return None, thisTick
     return sorted(currentOpening, key=lambda x: x[0]), None
@@ -132,103 +130,105 @@ def OptimizeChain(baseOpening, unknownTicks):
 # --- UI SECTION ---
 st.set_page_config(page_title="Opening Simulator", layout="wide")
 
-# Initialize all Session State keys to avoid AttributeErrors
 if 'base_attacks' not in st.session_state:
     st.session_state.base_attacks = [
         [64, 15.33], [81, 15.53], [91, 35.55], 
-        [164, 0.10], [172, 22.17], [181, 31.35], [191, 76.27],
-        [270, 0.10], [281, 43.85], [291, 85.64], 
-        [371, 0.10], [381, 46.29], [391, 69.73]
+        [164, 0.10], [172, 22.17], [181, 31.35], [191, 76.27]
     ]
 if 'optimized_results' not in st.session_state:
     st.session_state.optimized_results = None
+if 'sim_output' not in st.session_state:
+    st.session_state.sim_output = None
 
 with st.sidebar:
     st.header("Controls")
+    num_cycles = st.number_input("Cycles to simulate", min_value=1, max_value=20, value=5)
+    sim_ticks = (num_cycles * 100) + 5
     
-    # Run simulation button (outside the form so it triggers immediately)
     run_manual = st.button("🚀 Run Base Simulation", use_container_width=True)
     
-    # Clear All button (outside the form)
     if st.button("🗑️ Clear All Attacks", use_container_width=True):
         st.session_state.base_attacks = []
         st.session_state.optimized_results = None
+        st.session_state.sim_output = None
         st.rerun()
     
     st.divider()
     
-    # THE FORM: This stops the glitching
     with st.form("attack_editor_form"):
         st.subheader("Base Opening Attacks")
-        
-        # Prepare the data
         clean_df = pd.DataFrame(
             [r for r in st.session_state.base_attacks if r is not None and not all(x is None for x in r)], 
             columns=["Tick", "Percent"]
         )
-
-        # The editor inside the form will NOT trigger a rerun until the button is clicked
-        edited_df = st.data_editor(
-            clean_df,
-            num_rows="dynamic",
-            key="editor_inside_form",
-            use_container_width=True
-        )
-        
-        # The form submit button
+        edited_df = st.data_editor(clean_df, num_rows="dynamic", key="editor_inside_form", use_container_width=True)
         submit_btn = st.form_submit_button("💾 Apply Changes", use_container_width=True)
-        
         if submit_btn:
-            # Sync edits to state only when button is clicked
             raw_edits = edited_df.values.tolist()
             st.session_state.base_attacks = [r for r in raw_edits if not all(x is None for x in r)]
-            st.success("Changes saved!")
             st.rerun()
-
-    st.caption("Tip: Select row checkbox + 'Delete' key to remove a row.")
 
 st.title("Water's Opening Simulator")
 st.subheader("Chain Optimizer")
 ticks_input = st.text_input("Sequence of attack ticks to optimize (Comma separated)", "462, 471, 481, 491")
 test_ticks = [int(t.strip()) for t in ticks_input.split(",") if t.strip().isdigit()]
 
+def get_active_attacks():
+    current_df = pd.DataFrame(st.session_state.base_attacks, columns=["Tick", "Percent"])
+    if "editor_inside_form" in st.session_state:
+        changes = st.session_state["editor_inside_form"]
+        for row_idx in changes.get("deleted_rows", []):
+            current_df = current_df.drop(index=row_idx)
+        for row_idx, edit in changes.get("edited_rows", {}).items():
+            for col, val in edit.items():
+                current_df.at[row_idx, col] = val
+        for new_row in changes.get("added_rows", []):
+            current_df = pd.concat([current_df, pd.DataFrame([new_row])], ignore_index=True)
+    return current_df.dropna().values.tolist()
+
 col_opt, col_add = st.columns(2)
 
 with col_opt:
-    opt_clicked = st.button("🔍 Run Optimizer", use_container_width=True)
+    if st.button("🔍 Run Optimizer", use_container_width=True):
+        active_attacks = get_active_attacks()
+        with st.spinner("Calculating optimal chain..."):
+            results, fail_tick = OptimizeChain(active_attacks, test_ticks)
+            if results:
+                st.session_state.optimized_results = results
+                sim = OpeningSim(results, verbosity=2)
+                f = io.StringIO()
+                with redirect_stdout(f):
+                    l, t, s = sim.Run(maxTicks=sim_ticks)
+                st.session_state.sim_output = {"land": l, "troops": t, "success": s, "log": f.getvalue()}
+            else:
+                st.error(f"❌ Optimization FAILED at tick {fail_tick}.")
+                st.session_state.optimized_results = None
+                st.session_state.sim_output = None
 
-if opt_clicked:
-    with st.spinner("Calculating optimal chain..."):
-        results, fail_tick = OptimizeChain(st.session_state.base_attacks, test_ticks)
-        if results:
-            st.session_state.optimized_results = results
-            st.success("Attack Sequence successful!")
-        else:
-            st.error(f"❌ FAILED to sustain the attack at tick {fail_tick}.")
-            st.session_state.optimized_results = None
+if run_manual:
+    active_attacks = get_active_attacks()
+    sim = OpeningSim(active_attacks, verbosity=2)
+    f = io.StringIO()
+    with redirect_stdout(f):
+        l, t, s = sim.Run(maxTicks=sim_ticks)
+    st.session_state.sim_output = {"land": l, "troops": t, "success": s, "log": f.getvalue()}
+    st.session_state.optimized_results = None
 
-if st.session_state.get('optimized_results'): # Use .get() for safety
+if st.session_state.get('optimized_results'):
     with col_add:
-        if st.button("➕ Add Calculated Attacks to Base Opening", type="primary", use_container_width=True):
+        if st.button("➕ Add to Base Opening", type="primary", use_container_width=True):
             st.session_state.base_attacks = sorted(st.session_state.optimized_results, key=lambda x: x[0])
             st.session_state.optimized_results = None
+            st.session_state.sim_output = None
             st.rerun()
 
 st.divider()
-output_area = st.empty()
-
-# Execute Simulation
-if run_manual or (opt_clicked and st.session_state.get('optimized_results')):
-    attacks_to_run = st.session_state.optimized_results if opt_clicked else st.session_state.base_attacks
-    sim = OpeningSim(attacks_to_run, verbosity=2)
-    f = io.StringIO()
-    with redirect_stdout(f):
-        final_land, final_troops, success = sim.Run(505)
-    
-    with output_area.container():
-        st.subheader("Simulation Results")
-        if success:
-            st.success(f"✅ Success! | Final Land: **{final_land}** | Final Troops: **{final_troops}**")
-        else:
-            st.error(f"❌ Failure! | Final Land: **{final_land}** | Final Troops: **{final_troops}**")
-        st.code(f.getvalue())
+if st.session_state.sim_output:
+    out = st.session_state.sim_output
+    st.subheader("Simulation Results")
+    if out["success"]:
+        st.success(f"✅ Success! | Final Land: **{out['land']}** | Final Troops: **{out['troops']}**")
+    else:
+        st.error(f"❌ Failure! | Final Land: **{out['land']}** | Final Troops: **{out['troops']}**")
+    with st.expander("View Full Tick-by-Tick Log", expanded=True):
+        st.code(out["log"])

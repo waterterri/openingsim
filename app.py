@@ -118,7 +118,7 @@ def OptimizeChain(baseOpening, unknownTicks):
     results = []
     for i, thisTick in enumerate(unknownTicks):
         isLast = (i == len(unknownTicks) - 1)
-        nextEventTick = (unknownTicks[i+1] if not isLast else 500) - 1
+        nextEventTick = (unknownTicks[i+1] if not isLast else int(math.ceil(max(unknownTicks) / 100)) * 100) - 1
         step = FindMinAttack(currentOpening, thisTick, nextEventTick)
         if step is not None:
             percent = (step / 1024) * 100

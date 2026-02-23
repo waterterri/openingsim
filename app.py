@@ -5,12 +5,11 @@ import io
 from contextlib import redirect_stdout
 
 # --- CORE LOGIC ---
-
 class OpeningSim:
     def __init__(self, openingAttacks, verbosity=0):
         self.landValues = [2 * n * (n - 1) for n in range(100)]
         self.attackPenaltyRate = 12 / 1024
-        self.attackLengthThresholds = [(10000, 2), (1104, 3), (0, 4)]
+        self.attackLengthThresholds = [(10512, 2), (1104, 3), (0, 4)]
         self.verbosity = verbosity
         self.tick = 1
         self.layerIndex = 3
@@ -127,51 +126,103 @@ def OptimizeChain(baseOpening, unknownTicks):
             return None, thisTick
     return sorted(currentOpening, key=lambda x: x[0]), None
 
-# --- UI SECTION ---
+# --- UI SETUP ---
 st.set_page_config(page_title="Opening Simulator", layout="wide")
 
+# Initialize session state
 if 'base_attacks' not in st.session_state:
-    st.session_state.base_attacks = [
-        [71, 20.80], [91, 17.87]
-    ]
+    st.session_state.base_attacks = []
 if 'optimized_results' not in st.session_state:
     st.session_state.optimized_results = None
 if 'sim_output' not in st.session_state:
     st.session_state.sim_output = None
 
+# --- Sidebar Controls ---
 with st.sidebar:
     st.header("Controls")
     num_cycles = st.number_input("Cycles to simulate", min_value=1, max_value=20, value=5)
     sim_ticks = (num_cycles * 100) + 5
-    
+    # Multiplayer mode toggle
+    multiplayer_mode = st.checkbox("Enable Multiplayer Mode", value=False, key="multiplayer_mode")
     run_manual = st.button("🚀 Run Base Simulation", use_container_width=True)
-    
     if st.button("🗑️ Clear All Attacks", use_container_width=True):
         st.session_state.base_attacks = []
         st.session_state.optimized_results = None
         st.session_state.sim_output = None
         st.rerun()
-    
+
     st.divider()
-    
+
+    # Attack editor
     with st.form("attack_editor_form"):
         st.subheader("Base Opening Attacks")
-        clean_df = pd.DataFrame(
-            [r for r in st.session_state.base_attacks if r is not None and not all(x is None for x in r)], 
+        current_df = pd.DataFrame(
+            [r for r in st.session_state.base_attacks if r is not None and not all(x is None for x in r)],
             columns=["Tick", "Percent"]
         )
-        edited_df = st.data_editor(clean_df, num_rows="dynamic", key="editor_inside_form", use_container_width=True)
-        submit_btn = st.form_submit_button("💾 Apply Changes", use_container_width=True)
-        if submit_btn:
+        edited_df = st.data_editor(current_df, num_rows="dynamic", key="editor_inside_form", use_container_width=True)
+        if st.form_submit_button("💾 Apply Changes", use_container_width=True):
             raw_edits = edited_df.values.tolist()
             st.session_state.base_attacks = [r for r in raw_edits if not all(x is None for x in r)]
             st.rerun()
 
+# --- Main Content ---
 st.title("Water's Opening Simulator")
 st.subheader("Chain Optimizer")
-ticks_input = st.text_input("Sequence of attack ticks to optimize (Comma separated)", "172, 181, 191")
-test_ticks = [int(t.strip()) for t in ticks_input.split(",") if t.strip().isdigit()]
 
+# Calculate next cycle window based on existing attacks
+def get_next_cycle_window():
+    current_max_tick = -1
+    if 'base_attacks' in st.session_state:
+        if st.session_state.base_attacks:
+            current_max_tick = max(a[0] for a in st.session_state.base_attacks if a)
+    cycle_start = ((current_max_tick // 100) + 1) * 100
+    cycle_end = cycle_start + 99
+    return cycle_start + 1, cycle_end
+
+cycle_start, cycle_end = get_next_cycle_window()
+
+# Generate all 7n+1 ticks within the next cycle window
+def generate_7n_plus_1_in_window(start, end):
+    ticks = []
+    n_start = math.ceil((start - 1) / 7)
+    n_end = math.floor((end - 1) / 7)
+    for n in range(n_start, n_end + 1):
+        candidate = 7 * n + 1
+        if start <= candidate <= end:
+            ticks.append(candidate)
+    return sorted(ticks)
+
+# Show appropriate UI based on multiplayer mode
+
+if "selected_ticks" not in st.session_state:
+        st.session_state.selected_ticks = []
+
+if multiplayer_mode:
+    
+    widget_key = f"tick_selector_{len(st.session_state.selected_ticks)}"
+    available_ticks = generate_7n_plus_1_in_window(cycle_start, cycle_end)
+
+    # Show the bank of 7n+1 ticks in the next cycle
+    st.write("Select attack ticks (within next cycle):")
+    valid_ticks = [tick for tick in st.session_state.selected_ticks if tick in available_ticks]
+
+    new_selection = st.multiselect("Select sequence of attack ticks to optimize", options=sorted(available_ticks), default=valid_ticks, key=widget_key)
+
+    if new_selection != st.session_state.selected_ticks:
+        st.session_state.selected_ticks = sorted(new_selection)
+        st.rerun()
+
+else:
+    # Text input mode
+    ticks_input = st.text_input("Sequence of attack ticks to optimize (Comma separated)")
+    try:
+        input_ticks = [int(t.strip()) for t in ticks_input.split(",") if t.strip().isdigit()]
+    except:
+        input_ticks = []
+    st.session_state.selected_ticks = input_ticks
+
+# Get current attacks considering edits
 def get_active_attacks():
     current_df = pd.DataFrame(st.session_state.base_attacks, columns=["Tick", "Percent"])
     if "editor_inside_form" in st.session_state:
@@ -185,13 +236,13 @@ def get_active_attacks():
             current_df = pd.concat([current_df, pd.DataFrame([new_row])], ignore_index=True)
     return current_df.dropna().values.tolist()
 
+# Run optimizer button
 col_opt, col_add = st.columns(2)
-
 with col_opt:
     if st.button("🔍 Run Optimizer", use_container_width=True):
         active_attacks = get_active_attacks()
         with st.spinner("Calculating optimal chain..."):
-            results, fail_tick = OptimizeChain(active_attacks, test_ticks)
+            results, fail_tick = OptimizeChain(active_attacks, st.session_state.selected_ticks)
             if results:
                 st.session_state.optimized_results = results
                 sim = OpeningSim(results, verbosity=2)
@@ -204,7 +255,8 @@ with col_opt:
                 st.session_state.optimized_results = None
                 st.session_state.sim_output = None
 
-if run_manual:
+# Run manual simulation
+if 'run_manual' in locals() and run_manual:
     active_attacks = get_active_attacks()
     sim = OpeningSim(active_attacks, verbosity=2)
     f = io.StringIO()
@@ -213,6 +265,7 @@ if run_manual:
     st.session_state.sim_output = {"land": l, "troops": t, "success": s, "log": f.getvalue()}
     st.session_state.optimized_results = None
 
+# Add optimized chain to base attacks
 if st.session_state.get('optimized_results'):
     with col_add:
         if st.button("➕ Add to Base Opening", type="primary", use_container_width=True):
@@ -221,9 +274,10 @@ if st.session_state.get('optimized_results'):
             st.session_state.sim_output = None
             st.rerun()
 
+# Display results
 st.divider()
-if st.session_state.sim_output:
-    out = st.session_state.sim_output
+if st.session_state.get('sim_output'):
+    out = st.session_state['sim_output']
     st.subheader("Simulation Results")
     if out["success"]:
         st.success(f"✅ Success! | Final Land: **{out['land']}** | Final Troops: **{out['troops']}**")
@@ -231,3 +285,4 @@ if st.session_state.sim_output:
         st.error(f"❌ Failure! | Final Land: **{out['land']}** | Final Troops: **{out['troops']}**")
     with st.expander("View Full Tick-by-Tick Log", expanded=True):
         st.code(out["log"])
+    

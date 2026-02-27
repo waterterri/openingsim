@@ -175,7 +175,7 @@ def get_next_cycle_window():
     current_max_tick = -1
     if 'base_attacks' in st.session_state:
         if st.session_state.base_attacks:
-            current_max_tick = max(a[0] for a in st.session_state.base_attacks if a)
+            current_max_tick = max(int(a[0]) for a in st.session_state.base_attacks if a)
     cycle_start = ((current_max_tick // 100) + 1) * 100
     cycle_end = cycle_start + 99
     return cycle_start + 1, cycle_end

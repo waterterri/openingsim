@@ -226,7 +226,7 @@ else:
 def get_active_attacks():
     current_df = pd.DataFrame(st.session_state.base_attacks, columns=["Tick", "Percent"])
     if "editor_inside_form" in st.session_state:
-        changes = st.session_state["editor_inside_form"]
+        changes = st.session_state["editor_inside_form"]     
         for row_idx in changes.get("deleted_rows", []):
             current_df = current_df.drop(index=row_idx)
         for row_idx, edit in changes.get("edited_rows", {}).items():
@@ -234,6 +234,8 @@ def get_active_attacks():
                 current_df.at[row_idx, col] = val
         for new_row in changes.get("added_rows", []):
             current_df = pd.concat([current_df, pd.DataFrame([new_row])], ignore_index=True)
+    for col in ["Tick", "Percent"]:
+        current_df[col] = pd.to_numeric(current_df[col], errors='coerce')
     return current_df.dropna().values.tolist()
 
 # Run optimizer button
@@ -285,4 +287,3 @@ if st.session_state.get('sim_output'):
         st.error(f"❌ Failure! | Final Land: **{out['land']}** | Final Troops: **{out['troops']}**")
     with st.expander("View Full Tick-by-Tick Log", expanded=True):
         st.code(out["log"])
-    
